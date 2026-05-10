@@ -1,0 +1,162 @@
+---
+title: "Análisis Genómico - Patella ferruginea"
+output: html_notebook
+---
+
+```{r}
+library(vcfR)
+library(adegenet)
+library(hierfstat)
+library(ggplot2)
+library(ape)
+library(pheatmap)
+library(StAMPP)
+library(vegan)
+library(writexl)
+```
+
+```{r}
+# Leer VCF y convertir a genlight
+vcf <- read.vcfR("G:/Mi unidad/TFM/data/Pf_24_def.vcf")
+my_genlight <- vcfR2genlight(vcf)
+
+# Asignar regiones poblacionales
+nombres_muestras <- indNames(my_genlight)
+regiones <- rep(NA, length(nombres_muestras))
+
+regiones[grep("Sardinia", nombres_muestras)] <- "Cerdeña"
+regiones[grep("Tunez", nombres_muestras)] <- "Tunez"
+regiones[grep("Herradura|Motril", nombres_muestras)] <- "Andalucía"
+regiones[grep("Marruecos|Ceuta|SanGarcia", nombres_muestras)] <- "Estrecho de Gibraltar"
+regiones[grep("Melilla|Chafarinas", nombres_muestras)] <- "Melilla"
+
+pop(my_genlight) <- regiones
+```
+
+```{r}
+# Eliminar outliers
+outliers <- c("Motril-6", "Chafarinas-3")
+individuos_a_mantener <- !(indNames(my_genlight) %in% outliers)
+gen_sin_outliers <- my_genlight[individuos_a_mantener, ]
+
+# Limpiar SNPs con >50% de missing data
+temp_mat <- as.matrix(gen_sin_outliers)
+snps_validos <- colMeans(is.na(temp_mat)) < 0.5
+gen_pca_final <- gen_sin_outliers[, snps_validos]
+
+print(paste("Regiones:", nPop(gen_pca_final), "| SNPs limpios:", nLoc(gen_pca_final)))
+```
+
+```{r}
+# PCA y gráfico
+pca_final <- glPca(gen_pca_final, nf = 3)
+eig.val <- pca_final$eig
+var_exp <- 100 * (eig.val / sum(eig.val))
+
+pca_df <- as.data.frame(pca_final$scores)
+pca_df$Region <- pop(gen_pca_final)
+
+ggplot(pca_df, aes(x = PC1, y = PC2, color = Region, shape = Region)) +
+  geom_point(size = 4, alpha = 0.8) +
+  theme_bw() +
+  scale_color_brewer(palette = "Set1") +
+  labs(title = "PCA de Patella ferruginea (Sin Outliers)",
+       x = paste0("PC1 (", round(var_exp[1], 1), "%)"),
+       y = paste0("PC2 (", round(var_exp[2], 1), "%)")) +
+  theme(legend.position = "right",
+        plot.title = element_text(hjust = 0.5, face = "bold"))
+```
+
+```{r}
+# Cálculo de Fst y Heatmap
+stampp_reg <- stamppConvert(gen_pca_final, type = "genlight")
+fst_reg <- stamppFst(stampp_reg, nboots = 1, nclusters = 2)
+
+matriz_fst_reg <- fst_reg
+matriz_fst_reg[upper.tri(matriz_fst_reg)] <- t(fst_reg)[upper.tri(fst_reg)]
+diag(matriz_fst_reg) <- 0 
+
+pheatmap(matriz_fst_reg, 
+         display_numbers = TRUE, 
+         number_color = "black", 
+         fontsize_number = 12,          
+         color = colorRampPalette(c("white", "gold", "red"))(50), 
+         main = "Matriz Fst por Regiones Geográficas",
+         angle_col = 45)
+```
+
+```{r}
+# Función de diversidad y cálculo
+calcular_stats_final <- function(x) {
+  m <- as.matrix(x)
+  ho <- mean(m == 1, na.rm = TRUE)
+  col_sums <- colSums(m, na.rm = TRUE)
+  col_n <- colSums(!is.na(m))
+  p <- col_sums / (2 * col_n)
+  q <- 1 - p
+  he <- mean(2 * p * q, na.rm = TRUE)
+  fis <- (he - ho) / he
+  return(c(Ho = ho, He = he, Fis = fis))
+}
+
+lista_regiones <- seppop(gen_pca_final)
+resumen_stats <- t(sapply(lista_regiones, calcular_stats_final))
+
+tabla_diversidad <- as.data.frame(resumen_stats)
+tabla_diversidad$Region <- rownames(tabla_diversidad)
+tabla_diversidad <- tabla_diversidad[, c("Region", "Ho", "He", "Fis")]
+
+print(round(tabla_diversidad[, 2:4], 4))
+```
+
+```{r}
+# Análisis DAPC
+dapc_regiones <- dapc(gen_pca_final, pop=pop(gen_pca_final), n.pca = 15, n.da = 4)
+
+dapc_df <- as.data.frame(dapc_regiones$ind.coord)
+dapc_df$Region <- pop(gen_pca_final)
+
+ggplot(dapc_df, aes(x = LD1, y = LD2, color = Region, fill = Region)) +
+  stat_ellipse(alpha = 0.2, geom = "polygon", level = 0.95) + 
+  geom_point(size = 3, shape = 21, color = "black", alpha = 0.8) +
+  scale_fill_brewer(palette = "Set1") +
+  theme_bw() +
+  labs(title = "DAPC: Estructura Poblacional Forzada",
+       x = "Función Discriminante 1",
+       y = "Función Discriminante 2") +
+  theme(plot.title = element_text(face="bold", hjust=0.5))
+```
+
+```{r}
+# Test de Mantel Individual
+mis_coordenadas <- data.frame(
+  Individuo = c("Ceutaext-4", "Ceutaint-10", "Ceutaint-2", "Chafarinas-11", "Chafarinas-3",
+                "Herradura-1", "Herradura-12", "Herradura-7", "Marruecos-7", "Melilla-1",
+                "Melilla-4", "Melilla-6", "Motril-5", "Motril-6", "SanGarcia-1", "Tunez-11",
+                "Tunez-12", "Tunez-3", "Tunez-4", "Tunez-5", "Sardinia-362", "Sardinia-363",
+                "Sardinia-364", "Sardinia-370"),
+  Latitud = c(35.895546, 35.890001, 35.890001, 35.180448, 35.180448, 36.7246, 36.7246,
+              36.7246, 35.685058, 35.290438, 35.290438, 35.290438, 36.717462, 36.717462,
+              36.104432, 37.105887, 37.139723, 37.139723, 37.105887, 37.139723, 40.004289,
+              40.004235, 40.004396, 40.00445),
+  Longitud = c(-5.30536, -5.309984, -5.309984, -2.428719, -2.428719, -3.725922, -3.725922,
+               -3.725922, -5.312749, -2.923295, -2.923295, -2.923295, -3.522448, -3.522448,
+               -5.429939, 10.876983, 10.807567, 10.807567, 10.876983, 10.807567, 8.317964,
+               8.317941, 8.317728, 8.317705)
+)
+
+nombres_genetica <- indNames(gen_pca_final)
+coords_final <- mis_coordenadas[match(nombres_genetica, mis_coordenadas$Individuo), ]
+
+matriz_snps <- as.matrix(gen_pca_final)
+dist_gen_ind <- dist(matriz_snps, method = "euclidean")
+dist_geo_ind <- dist(coords_final[, c("Longitud", "Latitud")])
+
+mantel_individual <- mantel(dist_gen_ind, dist_geo_ind, method = "pearson", permutations = 9999, na.rm = TRUE)
+print(mantel_individual)
+
+plot(dist_geo_ind, dist_gen_ind, pch = 16, col = rgb(0, 0, 1, alpha = 0.4),
+     xlab = "Distancia Geográfica", ylab = "Distancia Genética (Euclídea)",
+     main = "Aislamiento por Distancia: Análisis de Individuos")
+abline(lm(dist_gen_ind ~ dist_geo_ind), col = "red", lwd = 2)
+```
