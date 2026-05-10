@@ -1,4 +1,4 @@
-# Análisis Genómico y Estructura Poblacional en el Mediterráneo
+# Conectividad poblacional del gasterópodo amenazado Patella ferruginea en el Mediterráneo occidental
 
 Este repositorio contiene los scripts, archivos de configuración y registros de ejecución utilizados para el procesamiento bioinformático y el análisis de genómica poblacional del proyecto. El conjunto de datos final consta de 24 individuos (tras la exclusión de una muestra deficiente durante los pasos iniciales de control de calidad) procedentes de cinco regiones geográficas.
 
