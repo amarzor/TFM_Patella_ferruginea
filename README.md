@@ -24,7 +24,3 @@ A continuación se detalla la función de cada uno de los cuatro archivos princi
   * **Descripción:** Un cuaderno interactivo de R Markdown que contiene todo el código utilizado para los análisis posteriores.
   * **Función:** Este script importa las matrices de SNPs generadas por `ipyrad` y ejecuta los análisis genéticos. Incluye el código documentado para calcular índices de diversidad genética, generar las matrices de diferenciación por pares y construir los gráficos del Análisis de Componentes Principales (PCA)..
 
----
-
-### Notas de uso
-Para reproducir el análisis desde cero, se debe ejecutar primero el script `Análisis_ipyrad.sh` (asegurándose de que los archivos `.fastq` de secuenciación bruta estén en el directorio correcto especificado en el archivo `params`). Una vez generados los archivos de salida (ej. formato `.vcf`), se puede abrir y ejecutar por bloques el documento `Analisis Poblacional.Rmd` utilizando RStudio.
